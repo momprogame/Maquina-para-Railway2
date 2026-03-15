@@ -1,7 +1,7 @@
 # Imagen base
 FROM alpine:latest
 
-# Instalación por capas para mejor debugging
+# Instalación por capas
 RUN apk update
 RUN apk add --no-cache \
     bash \
@@ -29,7 +29,7 @@ WORKDIR /app
 # Copiar archivos de dependencias
 COPY package*.json ./
 
-# Instalar dependencias UNA POR UNA para evitar errores
+# 🔴 CORREGIDO: sshx en lugar de ssh, forever bien escrito
 RUN npm install -g pm2 && \
     npm install -g forever && \
     npm install express --save && \
@@ -39,8 +39,6 @@ RUN npm install -g pm2 && \
 # Copiar el código
 COPY server.js ./
 
-# Puerto
 EXPOSE 3000
 
-# Comando de inicio (usando node directamente para evitar problemas con npm start)
 CMD ["node", "server.js"]
