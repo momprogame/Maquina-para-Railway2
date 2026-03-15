@@ -1,44 +1,45 @@
-# Imagen base
 FROM alpine:latest
 
-# Instalación por capas
-RUN apk update
+# Instalar dependencias básicas (versiones actualizadas de PHP)
 RUN apk add --no-cache \
-    bash \
-    curl \
-    wget \
-    git \
-    nano \
-    vim \
-    htop \
     nodejs \
     npm \
-    python3 \
-    py3-pip \
-    openssh-client \
-    tmux \
-    screen \
-    redis \
-    postgresql-client \
-    mysql-client \
-    ffmpeg \
-    && rm -rf /var/cache/apk/*
+    curl \
+    bash \
+    nginx \
+    php82 \
+    php82-fpm \
+    php82-mysqli \
+    php82-pdo \
+    php82-pdo_mysql \
+    php82-sqlite3 \
+    php82-curl \
+    php82-openssl \
+    php82-mbstring \
+    php82-xml \
+    php82-session \
+    php82-gd \
+    php82-phar \
+    supervisor \
+    sqlite
+
+# Crear enlaces simbólicos para compatibilidad (opcional)
+RUN ln -s /usr/bin/php82 /usr/bin/php || true
 
 WORKDIR /app
 
-# Copiar archivos de dependencias
 COPY package*.json ./
+RUN npm install
 
-# 🔴 CORREGIDO: sshx en lugar de ssh, forever bien escrito
-RUN npm install -g pm2 && \
-    npm install -g forever && \
-    npm install express --save && \
-    npm install sshx --save && \
-    npm cache clean --force
+COPY . .
 
-# Copiar el código
-COPY server.js ./
+# Configurar directorios
+RUN mkdir -p /run/nginx /var/www/html /var/lib/nginx /var/log/nginx
+RUN mkdir -p /run/php-fpm82
 
-EXPOSE 3000
+# Dar permisos
+RUN chmod +x /app/start.sh /app/keep-alive.js /app/cron-worker.js 2>/dev/null || true
 
-CMD ["node", "server.js"]
+EXPOSE 3000 8080 80
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
