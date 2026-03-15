@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-# Instalar dependencias básicas (versiones actualizadas de PHP)
+# Instalar dependencias con PHP 8.2 (la versión actual en Alpine)
 RUN apk add --no-cache \
     nodejs \
     npm \
@@ -19,12 +19,8 @@ RUN apk add --no-cache \
     php82-xml \
     php82-session \
     php82-gd \
-    php82-phar \
     supervisor \
     sqlite
-
-# Crear enlaces simbólicos para compatibilidad (opcional)
-RUN ln -s /usr/bin/php82 /usr/bin/php || true
 
 WORKDIR /app
 
@@ -33,11 +29,9 @@ RUN npm install
 
 COPY . .
 
-# Configurar directorios
 RUN mkdir -p /run/nginx /var/www/html /var/lib/nginx /var/log/nginx
 RUN mkdir -p /run/php-fpm82
 
-# Dar permisos
 RUN chmod +x /app/start.sh /app/keep-alive.js /app/cron-worker.js 2>/dev/null || true
 
 EXPOSE 3000 8080 80
