@@ -5,129 +5,172 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ===== FUNCIONES ÚTILES =====
-const f = { 
-  uptime: s => `${Math.floor(s/86400)}d ${Math.floor((s%86400)/3600)}h ${Math.floor(((s%86400)%3600)/60)}m`,
-  bytes: b => b==0?'0 Bytes':(b/1024**((i=Math.floor(Math.log(b)/Math.log(1024)))>0?i:0)).toFixed(2)+' '+['Bytes','KB','MB','GB'][i]||'Bytes'
-};
-
-// ===== INICIAR SSHX.IO =====
-console.log('\n🔌 INICIANDO SSHX.IO - BUSCA TU ENLACE AQUÍ ABAJO 🔌');
-console.log('═══════════════════════════════════════════════════');
-
-// Método 1: Usando exec para capturar salida
-const sshx = exec('npx sshx', (error, stdout, stderr) => {
-  if (error) {
-    console.log('❌ Error al iniciar sshx:', error.message);
-    return;
-  }
-  if (stdout) console.log('📡 SSHX OUTPUT:', stdout);
-  if (stderr) console.log('⚠️ SSHX LOG:', stderr);
-});
-
-// Capturar la salida en tiempo real para ver el enlace inmediatamente
-sshx.stdout.on('data', (data) => {
-  console.log(`🔗 ${data}`); // Aquí aparecerá el enlace https://sshx.io/s/...
-});
-
-sshx.stderr.on('data', (data) => {
-  console.log(`⚠️ ${data}`);
-});
-
-// Método 2: También probar con spawn (más confiable)
-try {
-  const sshx_spawn = spawn('npx', ['sshx'], { stdio: 'inherit' });
-  console.log('✅ SSHX iniciado con spawn');
-} catch (err) {
-  console.log('⚠️ Error con spawn:', err.message);
+function formatUptime(seconds) {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor(((seconds % 86400) % 3600) / 60);
+    return `${days}d ${hours}h ${minutes}m`;
 }
 
-console.log('═══════════════════════════════════════════════════\n');
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
 
-// ===== ÚNICO ENDPOINT QUE LO HACE TODO =====
-app.get('*', (req, res) => {
-  const path = req.path;
-  
-  // Root - Información del thermos
-  if(path === '/') {
-    return res.json({
-      status: '🔥 THERMOS ACTIVO',
-      uptime: f.uptime(os.uptime()),
-      memoria: `${f.bytes(os.freemem())} libres de ${f.bytes(os.totalmem())}`,
-      cpu: os.cpus()[0].model,
-      carga: os.loadavg(),
-      hora: new Date().toLocaleString()
+// ===== INICIAR SSHX.IO =====
+console.log('\n' + '='.repeat(50));
+console.log('🔌 INICIANDO SSHX.IO - BUSCA TU ENLACE AQUÍ ABAJO 🔌');
+console.log('='.repeat(50));
+
+// Intentar diferentes métodos para iniciar sshx
+function iniciarSSHX() {
+    // Método 1: Usando npx directamente
+    const sshx = spawn('npx', ['--yes', 'sshx'], {
+        stdio: ['inherit', 'pipe', 'pipe']
     });
-  }
-  
-  // Health check para Railway y cron
-  if(path === '/health' || path === '/ping') {
-    return res.send('🔥 vivo');
-  }
-  
-  // Endpoint especial para obtener el enlace SSHX
-  if(path === '/sshx-link') {
-    exec('npx sshx --version', (e, stdout) => {
-      res.send(`
+    
+    sshx.stdout.on('data', (data) => {
+        const output = data.toString();
+        console.log(`📡 ${output}`);
+        // Si encuentra un enlace sshx, lo resalta
+        if (output.includes('https://sshx.io')) {
+            console.log('\n' + '🔗' .repeat(20));
+            console.log('🔗 ENLACE ENCONTRADO: ' + output.trim());
+            console.log('🔗' .repeat(20) + '\n');
+        }
+    });
+    
+    sshx.stderr.on('data', (data) => {
+        console.log(`⚠️ ${data.toString()}`);
+    });
+    
+    sshx.on('error', (err) => {
+        console.log('❌ Error con spawn:', err.message);
+        // Método 2: Fallback con exec
+        exec('npx sshx', (error, stdout, stderr) => {
+            if (error) {
+                console.log('❌ SSHX no disponible. Instalando...');
+                exec('npm install -g sshx', (err2) => {
+                    if (!err2) {
+                        console.log('✅ SSHX instalado. Ejecutando...');
+                        exec('sshx', (e, out) => console.log(out || e));
+                    }
+                });
+            }
+            if (stdout) console.log('📡', stdout);
+        });
+    });
+}
+
+// Esperar 2 segundos para que todo cargue y luego iniciar sshx
+setTimeout(iniciarSSHX, 2000);
+
+// ===== ENDPOINTS =====
+app.get('/', (req, res) => {
+    res.json({
+        status: '🔥 THERMOS ACTIVO',
+        uptime: formatUptime(os.uptime()),
+        memoria: `${formatBytes(os.freemem())} libres de ${formatBytes(os.totalmem())}`,
+        cpu: os.cpus()[0].model,
+        carga: os.loadavg(),
+        hora: new Date().toLocaleString()
+    });
+});
+
+app.get('/health', (req, res) => {
+    res.send('🔥 vivo');
+});
+app.get('/ping', (req, res) => {
+    res.send('pong');
+});
+
+app.get('/ls', (req, res) => {
+    exec('ls -la', (e, stdout) => {
+        res.send(`<pre>${stdout || e?.message}</pre>`);
+    });
+});
+
+app.get('/df', (req, res) => {
+    exec('df -h', (e, stdout) => {
+        res.send(`<pre>${stdout || e?.message}</pre>`);
+    });
+});
+
+app.get('/ps', (req, res) => {
+    exec('ps aux', (e, stdout) => {
+        res.send(`<pre>${stdout || e?.message}</pre>`);
+    });
+});
+
+app.get('/sshx', (req, res) => {
+    res.send(`
         <html>
-          <body style="background:#000;color:#0f0;font-family:monospace;padding:20px">
-            <pre>
+            <head><title>SSHX Link</title></head>
+            <body style="background:#000;color:#0f0;font-family:monospace;padding:20px">
+                <pre>
 🔗 PARA OBTENER EL ENLACE SSHX:
 
 1. Ve a los LOGS de Railway
 2. Busca la línea que empieza con "https://sshx.io/s/"
 3. Copia y pega ese enlace en tu navegador
 
-O ejecuta este comando en la terminal:
+📡 También puedes intentar:
 $ npx sshx
 
-📡 Versión SSHX: ${stdout || 'desconocida'}
-            </pre>
-          </body>
+🔄 Recarga esta página en 10 segundos para ver si aparece el enlace abajo:
+                </pre>
+                <div id="logs" style="border:1px solid #0f0; padding:10px; margin-top:20px"></div>
+                <script>
+                    setInterval(() => {
+                        fetch('/health')
+                            .then(r => r.text())
+                            .then(t => {
+                                document.getElementById('logs').innerHTML += '🟢 ' + new Date().toLocaleTimeString() + '<br>';
+                            });
+                    }, 5000);
+                </script>
+            </body>
         </html>
-      `);
-    });
-    return;
-  }
-  
-  // Ejecutar comandos (solo lectura)
-  if(path === '/ls' || path === '/df' || path === '/ps') {
-    const cmd = path.substring(1); // quita el /
-    exec(cmd, (e, stdout) => res.send(`<pre>${stdout || e?.message}</pre>`));
-    return;
-  }
-  
-  // Cualquier otra cosa - 404 bonito
-  res.send(`
-    <html>
-      <head><title>Thermos con SSHX</title></head>
-      <body style="background:#000;color:#0f0;font-family:monospace;padding:20px">
-        <pre>
+    `);
+});
+
+app.get('*', (req, res) => {
+    res.send(`
+        <html>
+            <head><title>Thermos con SSHX</title></head>
+            <body style="background:#000;color:#0f0;font-family:monospace;padding:20px">
+                <pre>
 🔥 THERMOS CON SSHX 🔥
 ══════════════════════
-Endpoints disponibles:
-• /          - Info del sistema
-• /health    - Health check
-• /ls        - Listar archivos
-• /df        - Espacio en disco  
-• /ps        - Procesos activos
-• /sshx-link - Info del enlace SSHX
+Endpoints:
+• /       - Info del sistema
+• /health - Health check
+• /ls     - Listar archivos
+• /df     - Espacio en disco  
+• /ps     - Procesos activos
+• /sshx   - Info SSHX
 
 🔥 BUSCA EL ENLACE SSHX EN LOS LOGS 🔥
 ══════════════════════════════════════
-        </pre>
-      </body>
-    </html>
-  `);
+                </pre>
+            </body>
+        </html>
+    `);
 });
 
 // ===== AUTO-CALEFACCIÓN =====
 setInterval(() => {
-  console.log(`🔥 Calentando... ${new Date().toLocaleString()}`);
-  exec(`curl -s http://localhost:${PORT}/health > /dev/null`);
+    console.log(`🔥 Calentando... ${new Date().toLocaleString()}`);
+    exec(`curl -s http://localhost:${PORT}/health > /dev/null`);
 }, 300000); // 5 minutos
 
+// Iniciar servidor
 app.listen(PORT, () => {
-  console.log(`🔥 Thermos activo en puerto ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
-  console.log(`🔍 Busca el enlace SSHX arriba 👆`);
+    console.log('='.repeat(50));
+    console.log(`🔥 Thermos activo en puerto ${PORT}`);
+    console.log(`📊 Health check: http://localhost:${PORT}/health`);
+    console.log('='.repeat(50));
 });
