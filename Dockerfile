@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-# Solo lo necesario - SIN PHP
+# Instalar paquetes - PHP 8.2 (NO php81)
 RUN apk add --no-cache \
     nodejs \
     npm \
